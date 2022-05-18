@@ -1,11 +1,12 @@
 package com.hzy.ma2memory;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.Player;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.client.RuneLite;
@@ -16,13 +17,11 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 
 import javax.inject.Inject;
-import java.awt.*;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Slf4j
 @PluginDescriptor(
@@ -33,8 +32,7 @@ public class MageArena2MemoryPlugin extends Plugin
 	public static final String DATA_FOLDER = "mage-arena-2-memory";
 	public static File BOSS_HISTORY_DATA_DIR;
 	public static final String BOSS_HISTORY_DATA_FNAME = "BossData.json";
-	public static Image PLUGIN_ICON;
-
+	public static Gson GSON;
 	static
 	{
 		BOSS_HISTORY_DATA_DIR = new File(RuneLite.RUNELITE_DIR, DATA_FOLDER);
@@ -47,31 +45,17 @@ public class MageArena2MemoryPlugin extends Plugin
 	@Inject
 	private WorldMapPointManager worldMapPointManager;
 
-	private Gson gson;
-	private String user;
-	private String oppName;
-	private ArrayList<MageArenaBoss> bosses;
+	private ArrayList<MageArenaBoss> mageArenaBosses;
 	private boolean imported, completed;
 
 	@Override
 	protected void startUp() throws Exception
 	{
-
-		imported = false;
+		GSON = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+		mageArenaBosses = new ArrayList<>();
 		completed = false;
-
-		gson = new Gson();
-		bosses = new ArrayList<>();
-		if(client.getLocalPlayer() != null) {
-			try {
-				importBossHistory();
-				imported = true;
-			}
-			catch(Exception e) {
-				imported = false;
-				log.warn("Error while importing boss history data: " + e.getMessage());
-			}
-		}
+		if (client.getLocalPlayer() != null)
+			importBossHistory();
 	}
 
 	@Override
@@ -81,16 +65,11 @@ public class MageArena2MemoryPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onGameStateChanged(GameStateChanged gameStateChanged)
-	{
-		if(imported) { return; }
-		if (gameStateChanged.getGameState() == GameState.LOGGED_IN)
+	public void onGameStateChanged(GameStateChanged gameStateChanged) throws IOException {
+		if (gameStateChanged.getGameState() == GameState.LOGGED_IN && !imported)
 		{
-			user = client.getLocalPlayer().getName();
+			completed = false;
 			importBossHistory();
-			imported = true;
-			drawBossesOnMap();
-
 		}
 		else if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN) {
 			imported = false;
@@ -102,9 +81,7 @@ public class MageArena2MemoryPlugin extends Plugin
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
-		if(completed || !(event.getSource() instanceof Player) || !(event.getTarget() instanceof Player)) {
-			return;
-		}
+		if (completed) { return; }
 		Actor opp;
 		if (event.getSource().equals(client.getLocalPlayer()))
 		{
@@ -118,65 +95,67 @@ public class MageArena2MemoryPlugin extends Plugin
 		{
 			return;
 		}
-		oppName = opp.getName();
+		String oppName = opp.getName();
 		if(Objects.equals(oppName, "Porazdir") || Objects.equals(oppName, "Justiciar Zachariah") || Objects.equals(oppName, "Derwen")) {
-			if(bosses.stream().anyMatch(boss -> boss.getName().equals(oppName) && boss.getOwner().equals(user))) {return;}
-			addBoss(new MageArenaBoss(user, opp.getName(), opp.getWorldLocation()));
+			if(mageArenaBosses.size() > 0
+					&& mageArenaBosses.stream().anyMatch(boss -> (Objects.equals(boss.getName(), oppName)
+					&& Objects.equals(boss.getOwner(), client.getLocalPlayer().getName())))) {return;}
+
+			addBoss(new MageArenaBoss(client.getLocalPlayer().getName(), oppName, opp.getWorldLocation()));
 		}
-		if(bosses.size() == 3) {
+		if(mageArenaBosses.size() == 3) {
 			completed = true;
 		}
 	}
 
 
-	void addBoss(MageArenaBoss boss) {
-		bosses.add(boss);
+	private void addBoss(MageArenaBoss boss) {
+		mageArenaBosses.add(boss);
 		try {
-			File bossHistoryData = new File(BOSS_HISTORY_DATA_DIR, BOSS_HISTORY_DATA_FNAME);
-			Writer writer = new FileWriter(bossHistoryData);
-			gson.toJson(bosses, writer);
+			Writer writer = new FileWriter(new File(BOSS_HISTORY_DATA_DIR, BOSS_HISTORY_DATA_FNAME));
+			GSON.toJson(mageArenaBosses.toArray(), MageArenaBoss[].class, writer);
 			writer.flush();
 			writer.close();
+			drawBossesOnMap();
 		}
 		catch(IOException e) {
 			log.warn("Error while writing to boss history data file: " + e.getMessage());
 		}
 	}
 
-	void importBossHistory() {
-		try
+	private void importBossHistory() throws IOException {
+		BOSS_HISTORY_DATA_DIR.mkdirs();
+		File bossHistoryData = new File(BOSS_HISTORY_DATA_DIR, BOSS_HISTORY_DATA_FNAME);
+		if (!bossHistoryData.exists())
 		{
-			BOSS_HISTORY_DATA_DIR.mkdirs();
-			File bossHistoryData = new File(BOSS_HISTORY_DATA_DIR, BOSS_HISTORY_DATA_FNAME);
-
-			if (!bossHistoryData.exists())
-			{
-				Writer writer = new FileWriter(bossHistoryData);
-				writer.write("[]");
-				writer.close();
-				return;
-			}
-
-			List<MageArenaBoss> savedBosses = Arrays.asList(
-					gson.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class));
-			savedBosses = savedBosses.stream().filter(boss -> Objects.equals(boss.getOwner(), user)).collect(Collectors.toList());
-			bosses.clear();
-			importBosses(savedBosses);
+			Writer writer = new FileWriter(bossHistoryData);
+			writer.write("[]");
+			writer.close();
 		}
-		catch (Exception e)
-		{
-			log.warn("Error while deserializing boss history data: " + e.getMessage());
-		}
+
+		List<MageArenaBoss> savedBosses = Arrays.asList(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class));
+		mageArenaBosses.clear();
+		importBosses(savedBosses);
+		imported = true;
+
 	}
 
-	void importBosses(List<MageArenaBoss> bossesToAdd) throws NullPointerException {
-		if(bosses == null || bosses.size() < 1) { return; }
-		bossesToAdd.removeIf(Objects::isNull);
-		bosses.addAll(bossesToAdd);
+	private void importBosses(List<MageArenaBoss> savedBosses) throws NullPointerException {
+		if(savedBosses == null || savedBosses.size() < 1) { return; }
+		ArrayList<MageArenaBoss> bossesToAdd = new ArrayList<>();
+
+		for(MageArenaBoss boss : savedBosses) {
+			bossesToAdd.add(new MageArenaBoss(boss.getOwner(), boss.getName(),
+					new WorldPoint(boss.getWorldLocation()[0], boss.getWorldLocation()[1], boss.getWorldLocation()[2])));
+		}
+
+		mageArenaBosses.addAll(bossesToAdd);
+		if (mageArenaBosses.size() == 3) {completed = true;}
+		drawBossesOnMap();
 	}
 
-	void drawBossesOnMap() {
-		bosses.stream().filter(b -> !b.hasDrawn()).map(boss -> {
+	private void drawBossesOnMap() {
+		mageArenaBosses.stream().filter(b -> !b.hasDrawn()).map(boss -> {
 			boss.draw();
 			return WorldMapPoint.builder()
 					.worldPoint(boss.getWorldPoint())
@@ -186,4 +165,5 @@ public class MageArena2MemoryPlugin extends Plugin
 				}
 		).forEach(worldMapPointManager::add);
 	}
+
 }
