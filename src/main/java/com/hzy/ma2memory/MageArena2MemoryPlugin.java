@@ -134,7 +134,7 @@ public class MageArena2MemoryPlugin extends Plugin
 			writer.close();
 		}
 
-		List<MageArenaBoss> savedBosses = Arrays.asList(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class)).stream().filter(b -> b.getOwner() == client.getLocalPlayer().getName().toLowerCase()).collect(Collectors.toList());
+		List<MageArenaBoss> savedBosses = Arrays.stream(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class)).filter(b -> Objects.equals(b.getOwner(), client.getLocalPlayer().getName())).collect(Collectors.toList());
 		mageArenaBosses.clear();
 		importBosses(savedBosses);
 		imported = true;
