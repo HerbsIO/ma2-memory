@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @PluginDescriptor(
@@ -133,7 +134,7 @@ public class MageArena2MemoryPlugin extends Plugin
 			writer.close();
 		}
 
-		List<MageArenaBoss> savedBosses = Arrays.asList(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class));
+		List<MageArenaBoss> savedBosses = Arrays.asList(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class)).stream().filter(b -> b.getOwner() == client.getLocalPlayer().getName().toLowerCase()).collect(Collectors.toList());
 		mageArenaBosses.clear();
 		importBosses(savedBosses);
 		imported = true;
