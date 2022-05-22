@@ -32,9 +32,9 @@ public class MageArenaBoss {
         worldLocation = new int[] {worldPoint.getX(), worldPoint.getY(), worldPoint.getPlane()};
 
         if (name.split(" ").length == 2) {
-            mapImage = ImageUtil.loadImageResource(MageArena2MemoryPlugin.class, "zachariah.png");
+            mapImage = ImageUtil.loadImageResource(MageArena2MemoryPlugin.class, "/zachariah.png");
         } else {
-            mapImage = ImageUtil.loadImageResource(MageArena2MemoryPlugin.class, name.toLowerCase() + ".png");
+            mapImage = ImageUtil.loadImageResource(MageArena2MemoryPlugin.class, '/' + name.toLowerCase() + ".png");
         }
     }
 
