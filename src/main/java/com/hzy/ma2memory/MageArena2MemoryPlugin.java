@@ -46,6 +46,7 @@ public class MageArena2MemoryPlugin extends Plugin
 	@Inject
 	private WorldMapPointManager worldMapPointManager;
 
+	private ArrayList<WorldMapPoint> mapPoints;
 	private ArrayList<MageArenaBoss> mageArenaBosses;
 	private boolean imported, completed;
 
@@ -54,6 +55,8 @@ public class MageArena2MemoryPlugin extends Plugin
 	{
 		GSON = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 		mageArenaBosses = new ArrayList<>();
+		mapPoints = new ArrayList<>();
+		imported = false;
 		completed = false;
 		if (client.getLocalPlayer() != null)
 			importBossHistory();
@@ -62,7 +65,9 @@ public class MageArena2MemoryPlugin extends Plugin
 	@Override
 	protected void shutDown() throws Exception
 	{
-		log.info("Mage Arena 2 Memory stopped!");
+		mapPoints.forEach(mp -> worldMapPointManager.remove(mp));
+		mapPoints.clear();
+		mageArenaBosses.clear();
 	}
 
 	@Subscribe
@@ -158,11 +163,13 @@ public class MageArena2MemoryPlugin extends Plugin
 	private void drawBossesOnMap() {
 		mageArenaBosses.stream().filter(b -> !b.hasDrawn()).map(boss -> {
 			boss.draw();
-			return WorldMapPoint.builder()
+			WorldMapPoint bossMapPoint = WorldMapPoint.builder()
 					.worldPoint(boss.getWorldPoint())
 					.image(boss.getMapImage())
 					.tooltip(boss.getName())
 					.build();
+			mapPoints.add(bossMapPoint);
+			return bossMapPoint;
 				}
 		).forEach(worldMapPointManager::add);
 	}
