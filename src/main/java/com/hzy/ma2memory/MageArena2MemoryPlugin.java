@@ -58,8 +58,10 @@ public class MageArena2MemoryPlugin extends Plugin
 		mapPoints = new ArrayList<>();
 		imported = false;
 		completed = false;
-		if (client.getLocalPlayer() != null)
+		if (client.getLocalPlayer() != null) {
+			imported = true;
 			importBossHistory();
+		}
 	}
 
 	@Override
@@ -71,23 +73,25 @@ public class MageArena2MemoryPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onGameStateChanged(GameStateChanged gameStateChanged) throws IOException {
-		if (gameStateChanged.getGameState() == GameState.LOGGED_IN && !imported)
-		{
-			completed = false;
-			importBossHistory();
-		}
-		else if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN) {
+	public void onGameStateChanged(GameStateChanged gameStateChanged) {
+		if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN) {
 			imported = false;
 			completed = false;
+			mageArenaBosses.clear();
+			mapPoints.clear();
 		}
-
 	}
 
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
 		if (completed) { return; }
+		if (!imported && client.getLocalPlayer() != null) {
+			imported = true;
+			try {
+				importBossHistory();
+			} catch (Exception ignored) {}
+		}
 		Actor opp;
 		if (event.getSource().equals(client.getLocalPlayer()))
 		{
@@ -101,6 +105,7 @@ public class MageArena2MemoryPlugin extends Plugin
 		{
 			return;
 		}
+
 		String oppName = opp.getName();
 		if(Objects.equals(oppName, "Porazdir") || Objects.equals(oppName, "Justiciar Zachariah") || Objects.equals(oppName, "Derwen")) {
 			if(mageArenaBosses.size() > 0
@@ -142,8 +147,6 @@ public class MageArena2MemoryPlugin extends Plugin
 		List<MageArenaBoss> savedBosses = Arrays.stream(GSON.fromJson(new FileReader(bossHistoryData), MageArenaBoss[].class)).filter(b -> Objects.equals(b.getOwner(), client.getLocalPlayer().getName())).collect(Collectors.toList());
 		mageArenaBosses.clear();
 		importBosses(savedBosses);
-		imported = true;
-
 	}
 
 	private void importBosses(List<MageArenaBoss> savedBosses) throws NullPointerException {
@@ -170,8 +173,7 @@ public class MageArena2MemoryPlugin extends Plugin
 					.build();
 			mapPoints.add(bossMapPoint);
 			return bossMapPoint;
-				}
-		).forEach(worldMapPointManager::add);
+		}).forEach(worldMapPointManager::add);
 	}
 
 }
