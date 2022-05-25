@@ -9,6 +9,8 @@ import net.runelite.api.GameState;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.InteractingChanged;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.widgets.WidgetID;
 import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -77,8 +79,22 @@ public class MageArena2MemoryPlugin extends Plugin
 		if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN) {
 			imported = false;
 			completed = false;
+			mapPoints.forEach(mp -> worldMapPointManager.remove(mp));
 			mageArenaBosses.clear();
 			mapPoints.clear();
+		}
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded widgetLoaded) {
+		if (widgetLoaded.getGroupId() == WidgetID.WORLD_MAP_GROUP_ID)
+		{
+			if(!imported) {
+				try {
+					imported = true;
+					importBossHistory();
+				} catch (Exception ignored) {}
+			}
 		}
 	}
 
@@ -86,42 +102,34 @@ public class MageArena2MemoryPlugin extends Plugin
 	public void onInteractingChanged(InteractingChanged event)
 	{
 		if (completed) { return; }
-		if (!imported && client.getLocalPlayer() != null) {
-			imported = true;
-			try {
-				importBossHistory();
-			} catch (Exception ignored) {}
-		}
-		Actor opp;
+
+		Actor opp = null;
+
 		if (event.getSource().equals(client.getLocalPlayer()))
 		{
-			opp = event.getTarget();
-		}
-		else if (event.getTarget().equals(client.getLocalPlayer()))
-		{
-			opp = event.getSource();
+			try {
+				opp = event.getTarget();
+			} catch (NullPointerException ignored) {}
 		}
 		else
 		{
 			return;
 		}
-
+		if (opp == null) { return; }
 		String oppName = opp.getName();
 		if(Objects.equals(oppName, "Porazdir") || Objects.equals(oppName, "Justiciar Zachariah") || Objects.equals(oppName, "Derwen")) {
-			if(mageArenaBosses.size() > 0
-					&& mageArenaBosses.stream().anyMatch(boss -> (Objects.equals(boss.getName(), oppName)
-					&& Objects.equals(boss.getOwner(), client.getLocalPlayer().getName())))) {return;}
+			if(mageArenaBosses.size() > 0 && mageArenaBosses.stream().anyMatch(boss -> (Objects.equals(boss.getName(), oppName) && Objects.equals(boss.getOwner(), client.getLocalPlayer().getName())))) {return;}
 
 			addBoss(new MageArenaBoss(client.getLocalPlayer().getName(), oppName, opp.getWorldLocation()));
-		}
-		if(mageArenaBosses.size() == 3) {
-			completed = true;
 		}
 	}
 
 
 	private void addBoss(MageArenaBoss boss) {
 		mageArenaBosses.add(boss);
+		if(mageArenaBosses.size() == 3) {
+			completed = true;
+		}
 		try {
 			Writer writer = new FileWriter(new File(BOSS_HISTORY_DATA_DIR, BOSS_HISTORY_DATA_FNAME));
 			GSON.toJson(mageArenaBosses.toArray(), MageArenaBoss[].class, writer);
